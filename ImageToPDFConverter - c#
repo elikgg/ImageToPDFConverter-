@@ -1,0 +1,131 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
+using System.Linq;
+using System.Windows.Forms;
+using PdfSharp.Drawing;
+using PdfSharp.Pdf;
+
+namespace PdfMaker
+{
+    public partial class Form1 : Form
+    {
+        // Global list to store images
+        private List<Image> images = new List<Image>();
+
+        public Form1()
+        {
+            InitializeComponent();
+            this.AllowDrop = true; // Enable drag-and-drop functionality
+            this.DragEnter += Form1_DragEnter;
+            this.DragDrop += Form1_DragDrop;
+        }
+
+        private void Form1_Load(object sender, EventArgs e) { }
+
+        // Button click event to create PDF
+        private void button2_Click(object sender, EventArgs e)
+        {
+            if (images.Count == 0)
+            {
+                MessageBox.Show("Please select at least one image.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            SaveFileDialog saveFileDialog = new SaveFileDialog
+            {
+                Filter = "PDF Files|*.pdf"
+            };
+
+            if (saveFileDialog.ShowDialog() != DialogResult.OK)
+            {
+                return;
+            }
+
+            string pdfPath = saveFileDialog.FileName;
+
+            try
+            {
+                using (PdfDocument document = new PdfDocument())
+                {
+                    foreach (Image image in images)
+                    {
+                        PdfPage page = document.AddPage();
+                        XGraphics gfx = XGraphics.FromPdfPage(page);
+
+                        // Scale the image to fit an A4 page
+                        double scaleFactor = Math.Min(page.Width.Point / image.Width, page.Height.Point / image.Height);
+                        double scaledWidth = image.Width * scaleFactor;
+                        double scaledHeight = image.Height * scaleFactor;
+                        double x = (page.Width.Point - scaledWidth) / 2;
+                        double y = (page.Height.Point - scaledHeight) / 2;
+
+                        using (MemoryStream ms = new MemoryStream())
+                        {
+                            image.Save(ms, image.RawFormat);
+                            XImage xImage = XImage.FromStream(ms);
+                            gfx.DrawImage(xImage, x, y, scaledWidth, scaledHeight);
+                        }
+                    }
+
+                    document.Save(pdfPath);
+                }
+
+                MessageBox.Show("PDF successfully created!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"An error occurred while creating the PDF: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // DragEnter event to check if the dragged files are images
+        private void Form1_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                if (files.All(IsImageFile))
+                {
+                    e.Effect = DragDropEffects.Copy;
+                }
+                else
+                {
+                    e.Effect = DragDropEffects.None;
+                }
+            }
+        }
+
+        // DragDrop event to process the dropped files
+        private void Form1_DragDrop(object sender, DragEventArgs e)
+        {
+            string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            foreach (string file in files)
+            {
+                try
+                {
+                    using (FileStream stream = new FileStream(file, FileMode.Open, FileAccess.Read))
+                    {
+                        Image image = Image.FromStream(stream);
+                        images.Add(image);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"An error occurred while loading an image: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+
+            MessageBox.Show("Images successfully loaded.", "Information", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        // Check if all provided file paths are image files
+        private bool IsImageFile(string filepath)
+        {
+            string[] allowedExtensions = { ".bmp", ".jpg", ".jpeg", ".png", ".gif" };
+            string extension = Path.GetExtension(filepath.ToLower());
+            return Array.Exists(allowedExtensions, element => element == extension);
+        }
+    }
+}
